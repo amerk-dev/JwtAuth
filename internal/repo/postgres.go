@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	_ "github.com/lib/pq"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"os"
@@ -69,4 +70,41 @@ func (db *DB) StoreRefreshToken(guid, hashedToken, ip, email string) error {
 		}
 	}
 	return nil
+}
+
+func (db *DB) FindUserByRefreshToken(refreshToken string) (*models.User, error) {
+	var users []models.User
+
+	res := db.pg.Find(&users)
+	if res.Error != nil {
+		return nil, errors.New("Failed to retrieve users")
+	}
+
+	for _, user := range users {
+		err := bcrypt.CompareHashAndPassword([]byte(user.RefreshToken), []byte(refreshToken))
+		if err == nil {
+			return &user, nil
+		}
+	}
+
+	return nil, errors.New("Failed to find user by refresh token")
+}
+
+func (db *DB) UpdateRefreshToken(guid, newHashedToken, ip string) error {
+	var user models.User
+
+	res := db.pg.First(&user, "guid = ?", guid)
+	if res.Error != nil {
+		return errors.New("Failed to find user by refresh token")
+	} else {
+		user.RefreshToken = newHashedToken
+		if ip != "" {
+			user.Ip = ip
+		}
+		res = db.pg.Save(&user)
+		if res.Error != nil {
+			return errors.New("Failed to update refresh token")
+		}
+		return nil
+	}
 }
