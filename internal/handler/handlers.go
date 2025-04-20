@@ -18,6 +18,18 @@ func NewServer(db *repo.DB) *Server {
 	return &Server{db: db}
 }
 
+// AccessMethod godoc
+// @Summary      Issue Access and Refresh tokens
+// @Description  Генерция пары токенов доступа и обновления JWT для указанного GUID пользователя
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  TokenRequest  true  "User GUID"
+// @Success      200   {object}  TokenResponse
+// @Failure      400   {string}  string  "Invalid JSON body"
+// @Failure      405   {string}  string  "Method not allowed"
+// @Failure      500   {string}  string  "Internal Server Error"
+// @Router       /auth/get-token [post]
 func (s *Server) AccessMethod(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -60,6 +72,19 @@ func (s *Server) AccessMethod(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// RefreshHandler godoc
+// @Summary      Refresh Access and Refresh tokens
+// @Description  Обновление пары токенов.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        body  body  RefreshRequest  true  "Refresh Token"
+// @Success      200   {object}  TokenResponse
+// @Failure      400   {string}  string  "Invalid JSON body"
+// @Failure      401   {string}  string  "Invalid refresh token"
+// @Failure      405   {string}  string  "Method not allowed"
+// @Failure      500   {string}  string  "Internal Server Error"
+// @Router       /auth/refresh [post]
 func (s *Server) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)

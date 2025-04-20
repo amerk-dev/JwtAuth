@@ -1,0 +1,100 @@
+basePath: /
+definitions:
+  handler.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  handler.TokenRequest:
+    properties:
+      gu_id:
+        type: string
+    type: object
+  handler.TokenResponse:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Тестовое задание на позицию Junior Backend Developer
+  title: JWT Auth Service
+  version: "1.0"
+paths:
+  /auth/get-token:
+    post:
+      consumes:
+      - application/json
+      description: Генерция пары токенов доступа и обновления JWT для указанного GUID
+        пользователя
+      parameters:
+      - description: User GUID
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.TokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TokenResponse'
+        "400":
+          description: Invalid JSON body
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Issue Access and Refresh tokens
+      tags:
+      - auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Обновление пары токенов.
+      parameters:
+      - description: Refresh Token
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TokenResponse'
+        "400":
+          description: Invalid JSON body
+          schema:
+            type: string
+        "401":
+          description: Invalid refresh token
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Refresh Access and Refresh tokens
+      tags:
+      - auth
+swagger: "2.0"
