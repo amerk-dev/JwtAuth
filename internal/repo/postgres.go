@@ -9,6 +9,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"os"
+	"time"
 )
 
 type DB struct {
@@ -34,7 +35,7 @@ func InitDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
-	err = db.AutoMigrate(&models.User{})
+	err = db.AutoMigrate(&models.User{}, &models.RefreshToken{})
 	if err != nil {
 		return nil, err
 	}
@@ -42,69 +43,52 @@ func InitDB() (*gorm.DB, error) {
 	return db, nil
 }
 
-func (db *DB) StoreRefreshToken(guid, hashedToken, ip, email string) error {
-	var user models.User
-
-	res := db.pg.First(&user, "guid = ?", guid)
-	if res.Error != nil {
-		user = models.User{
-			Guid:         guid,
-			RefreshToken: hashedToken,
-			Ip:           ip,
-			Email:        email,
-		}
-
-		res = db.pg.Create(&user)
-		if res.Error != nil {
-			return errors.New("Failed to store refresh token")
-		}
-	} else {
-		user.RefreshToken = hashedToken
-		if ip != "" {
-			user.Ip = ip
-		}
-
-		res = db.pg.Save(&user)
-		if res.Error != nil {
-			return errors.New("Failed to update refresh token")
-		}
+func (db *DB) StoreRefreshToken(guid, tokenHash, accessJTI, ip string) error {
+	rt := models.RefreshToken{
+		UserGuid:  guid,
+		TokenHash: tokenHash,
+		AccessJTI: accessJTI,
+		IPAddress: ip,
+		CreatedAt: time.Now(),
+		Revoked:   false,
 	}
-	return nil
+	return db.pg.Create(&rt).Error
 }
 
-func (db *DB) FindUserByRefreshToken(refreshToken string) (*models.User, error) {
-	var users []models.User
-
-	res := db.pg.Find(&users)
-	if res.Error != nil {
-		return nil, errors.New("Failed to retrieve users")
+func (db *DB) FindRefreshToken(raw string) (*models.RefreshToken, error) {
+	var tokens []models.RefreshToken
+	if err := db.pg.Where("revoked = false").Find(&tokens).Error; err != nil {
+		return nil, err
 	}
-
-	for _, user := range users {
-		err := bcrypt.CompareHashAndPassword([]byte(user.RefreshToken), []byte(refreshToken))
-		if err == nil {
-			return &user, nil
+	for _, t := range tokens {
+		if err := bcrypt.CompareHashAndPassword([]byte(t.TokenHash), []byte(raw)); err == nil {
+			return &t, nil
 		}
 	}
-
-	return nil, errors.New("Failed to find user by refresh token")
+	return nil, errors.New("refresh token not found")
 }
 
-func (db *DB) UpdateRefreshToken(guid, newHashedToken, ip string) error {
-	var user models.User
+func (db *DB) UpdateRefreshToken(oldID int, guid, newHash, newAccessJTI, ip string) error {
+	tx := db.pg.Begin()
 
-	res := db.pg.First(&user, "guid = ?", guid)
-	if res.Error != nil {
-		return errors.New("Failed to find user by refresh token")
-	} else {
-		user.RefreshToken = newHashedToken
-		if ip != "" {
-			user.Ip = ip
-		}
-		res = db.pg.Save(&user)
-		if res.Error != nil {
-			return errors.New("Failed to update refresh token")
-		}
-		return nil
+	if err := tx.Model(&models.RefreshToken{}).Where("id = ?", oldID).Update("revoked", true).Error; err != nil {
+		tx.Rollback()
+		return err
 	}
+
+	newToken := models.RefreshToken{
+		UserGuid:  guid,
+		TokenHash: newHash,
+		AccessJTI: newAccessJTI,
+		IPAddress: ip,
+		CreatedAt: time.Now(),
+		Revoked:   false,
+	}
+
+	if err := tx.Create(&newToken).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }
