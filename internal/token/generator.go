@@ -3,25 +3,33 @@ package token
 import (
 	"JwtAuth/pkg/generator"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	"log"
 	"time"
 )
 
-func GenerateAccessToken(guid, ip string, expiration time.Duration) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
-		"guid": guid,
-		"ip":   ip,
-		"exp":  time.Now().Add(expiration).Unix(),
-	})
+func GenerateAccessToken(userGuid string, ip string, expiration time.Duration) (string, string, error) {
+	jti := uuid.New().String()
+	now := time.Now()
 
-	tokenString, err := token.SignedString([]byte("your-secret-key"))
-	if err != nil {
-		return "", err
+	claims := jwt.MapClaims{
+		"sub": userGuid,
+		"jti": jti,
+		"iat": now.Unix(),
+		"exp": now.Add(expiration).Unix(),
+		"ip":  ip,
 	}
 
-	return tokenString, nil
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
+
+	signedToken, err := token.SignedString([]byte("12345678"))
+	if err != nil {
+		return "", "", err
+	}
+
+	return signedToken, jti, nil
 }
 
 func GenerateRefreshToken() (string, string, error) {

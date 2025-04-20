@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"JwtAuth/internal/domain"
 	"JwtAuth/internal/repo"
 	"JwtAuth/internal/token"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 )
@@ -32,7 +34,7 @@ func (s *Server) AccessMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := token.GenerateAccessToken(body.GuId, r.RemoteAddr, time.Minute*5)
+	accessToken, jti, err := token.GenerateAccessToken(body.GuId, r.RemoteAddr, time.Minute*5)
 	if err != nil {
 		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
 		return
@@ -44,7 +46,7 @@ func (s *Server) AccessMethod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.db.StoreRefreshToken(body.GuId, hashedRefreshToken, r.RemoteAddr, "")
+	err = s.db.StoreRefreshToken(body.GuId, hashedRefreshToken, jti, r.RemoteAddr)
 	if err != nil {
 		http.Error(w, "Failed to store refresh token", http.StatusInternalServerError)
 		return
@@ -69,45 +71,41 @@ func (s *Server) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		RefreshToken string `json:"refresh_token"`
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&body)
-	if err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-	user, err := s.db.FindUserByRefreshToken(body.RefreshToken)
-	if err != nil {
-		http.Error(w, "Failed to find user", http.StatusNotFound)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
-	if user.Ip != r.RemoteAddr {
-		// Отправляем на почту уведомление, что вйпишник другой
-	}
-
-	newAccessToken, err := token.GenerateAccessToken(user.Guid, r.RemoteAddr, time.Minute*5)
+	refreshToken, err := s.db.FindRefreshToken(body.RefreshToken)
 	if err != nil {
-		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
+		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
 		return
 	}
 
-	newRefreshToken, newHashedRefreshToken, err := token.GenerateRefreshToken()
+	if refreshToken.IPAddress != r.RemoteAddr {
+		log.Println("АААААА, Другой айпи")
+		// Отправка сообзения по Email
+	}
+
+	newAccessToken, newJTI, err := token.GenerateAccessToken(refreshToken.UserGuid, r.RemoteAddr, time.Minute*5)
 	if err != nil {
-		http.Error(w, "Failed to generate refresh token", http.StatusInternalServerError)
+		http.Error(w, "could not create access token", http.StatusInternalServerError)
 		return
 	}
 
-	err = s.db.UpdateRefreshToken(user.Guid, newHashedRefreshToken, r.RemoteAddr)
+	newRefreshToken, newHash, err := token.GenerateRefreshToken()
 	if err != nil {
-		http.Error(w, "Failed to update refresh token", http.StatusInternalServerError)
+		http.Error(w, "could not create refresh token", http.StatusInternalServerError)
 		return
 	}
 
-	response := map[string]string{
-		"access_token":  newAccessToken,
-		"refresh_token": newRefreshToken,
+	err = s.db.UpdateRefreshToken(refreshToken.ID, refreshToken.UserGuid, newHash, newJTI, r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(domain.Token{AccessToken: newAccessToken, RefreshToken: newRefreshToken})
+
 }
